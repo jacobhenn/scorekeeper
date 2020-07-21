@@ -4,7 +4,7 @@ Scorekeeper is a very lightweight command line score tracking program, written i
 Example usage:
 ```
 $ scorekeeper
-[initialize teams] bill joe bob
+[initial teams] bill joe bob
 ------------------------
 0 bill
 0 joe
@@ -12,18 +12,18 @@ $ scorekeeper
 [score, name] 5 joe
 ------------------------
 0 bill
-5 joe
 0 bob
+5 joe
 [score, name] bob
 ------------------------
 0 bill
-5 joe
 1 bob
+5 joe
 [score, name] -2 joe
 ------------------------
 0 bill
-3 joe
 1 bob
+3 joe
 [score, name] exit
 ```
 
