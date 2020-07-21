@@ -48,18 +48,6 @@ teamFromInput string teamList
           stringWords =      words string
           noTeam      = CustomError 1 "Not a valid team name"
 
-loop :: [Team] -> IO ()
-loop list = do
-    putStr $ init $ unlines $ [take 24 $ repeat '-', unlines $ map show list]
-    line <- prompt "[score, name] "
-    let convertLine = teamFromInput line list
-    unless (elem (head $ words line) ["quit", "exit"]) $ do
-        when (isRight $ convertLine) $ do
-            print $ fromRight (CustomError 0 "Error") convertLine
-            loop list
-        let newList = updateTeams (fromLeft (Team 0 "") convertLine) list
-        loop newList
-
 -- the main function that takes a new score to add and a list of Teams to update.
 updateTeams :: Team -> [Team] -> [Team]
 updateTeams inputTeam@(Team teamScore teamName) teamList = sort $ teamList & element teamIndex .~ newTeam
@@ -68,6 +56,19 @@ updateTeams inputTeam@(Team teamScore teamName) teamList = sort $ teamList & ele
                                                                  teamIndex  = head $ elemIndices teamName teamNames
                                                                  oldTeam    = teamList !! teamIndex
                                                                  newTeam    = addTeams oldTeam inputTeam
+
+-- the main loop function that takes the list of teams along with it and runs updateteams on every input
+loop :: [Team] -> IO ()
+loop list = do
+    putStr $ init $ unlines $ [take 24 $ repeat '-', unlines $ map show list]
+    line <- prompt "[score, name] "
+    unless (elem (head $ words line') ["quit", "exit"]) $ do
+        let convertLine = teamFromInput line' list'
+        when (isRight $ convertLine) $ do
+            print $ fromRight (CustomError 0 "Error") convertLine
+            loop list'
+        let newList = updateTeams (fromLeft (Team 0 "") convertLine) list'
+        loop newList
 
 -- the actual main function that is called at the beginning of the program and asks the player to initialize a list of teams
 main = do putStrLn "Scorekeeper sucessfully run."
