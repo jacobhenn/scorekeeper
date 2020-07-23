@@ -18,7 +18,7 @@ instance Show CustomError where
     show (CustomError code description) = "E" ++ show code ++ " " ++ description
 
 instance Show Team where
-    show (Team teamScore teamName) = (show teamScore) ++ " " ++ teamName
+    show (Team teamScore teamName) = show teamScore ++ " " ++ teamName
 
 instance Ord Team where
     (Team teamScore _) `compare` (Team teamScore' _) = teamScore `compare` teamScore'
@@ -38,10 +38,10 @@ teamFromInput :: String -> [Team] -> Either Team CustomError
 teamFromInput string teamList
     | length stringWords == 1 = if
         | elem (head stringWords) teamNames -> Left $ Team 1 $ head stringWords
-        | otherwise             -> Right noTeam
-    | length stringWords ==2 = if
+        | otherwise                         -> Right noTeam
+    | length stringWords == 2 = if
         | elem (last stringWords) teamNames -> Left $ Team (read $ head stringWords :: Int) $ last stringWords
-        | otherwise                           -> Right noTeam
+        | otherwise                         -> Right noTeam
     | length stringWords == 0 = Right $ CustomError 2 "No arguments"
     | otherwise = Right $ CustomError 3 "Invalid input"
     where teamNames   = map name teamList
@@ -60,14 +60,17 @@ updateTeams inputTeam@(Team teamScore teamName) teamList = sort $ teamList & ele
 -- the main loop function that takes the list of teams along with it and runs updateteams on every input
 loop :: [Team] -> IO ()
 loop list = do
-    putStr $ init $ unlines $ [take 24 $ repeat '-', unlines $ map show list]
+    putStrLn $ take 24 $ repeat '-'
+    mapM_ print list
     line <- prompt "[score, name] "
-    unless (elem (head $ words line') ["quit", "exit"]) $ do
-        let convertLine = teamFromInput line' list'
-        when (isRight $ convertLine) $ do
-            print $ fromRight (CustomError 0 "Error") convertLine
-            loop list'
-        let newList = updateTeams (fromLeft (Team 0 "") convertLine) list'
+    let convertLine = teamFromInput line list
+    let isExit      = elem line ["quit", "exit"]
+    when (isRight convertLine) $ do
+        unless (isExit) $ do
+            print $ fromRight (CustomError 0 "") convertLine
+            loop list
+    unless (isExit) $ do
+        let newList = updateTeams (fromLeft (Team 0 "") convertLine) list
         loop newList
 
 -- the actual main function that is called at the beginning of the program and asks the player to initialize a list of teams
