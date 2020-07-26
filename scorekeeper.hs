@@ -45,7 +45,7 @@ teamFromInput string teamList
     | length stringWords == 0 = Right $ CustomError 2 "No arguments"
     | otherwise = Right $ CustomError 3 "Invalid input"
     where teamNames   = map name teamList
-          stringWords =      words string
+          stringWords = words string
           noTeam      = CustomError 1 "Not a valid team name"
 
 -- the main function that takes a new score to add and a list of Teams to update.
@@ -60,7 +60,7 @@ updateTeams inputTeam@(Team teamScore teamName) teamList = sort $ teamList & ele
 -- the main loop function that takes the list of teams along with it and runs updateteams on every input
 loop :: [Team] -> IO ()
 loop list = do
-    putStrLn $ take 24 $ repeat '-'
+    putStrLn $ replicate 24 '-'
     mapM_ print list
     line <- prompt "[score, name] "
     let convertLine = teamFromInput line list
