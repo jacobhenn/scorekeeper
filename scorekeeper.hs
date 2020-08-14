@@ -47,18 +47,19 @@ prompt x
 -- takes a string and parses it into a team. fails gracefully if the input is invalid.
 teamFromInput :: String -> [Team] -> Either Team CustomError
 teamFromInput string teamList
-  | length stringWords == 0 = Right $ CustomError 2 "No arguments"
-  | elem (head stringWords) ["add", "del", "help", "quit", "exit"] =
-    Right $ CustomError 0 ""
-  | length stringWords == 1 =
-    if | elem (head stringWords) teamNames -> Left $ Team 1 $ head stringWords
-       | otherwise -> Right $ CustomError 3 "Invalid input"
-  | length stringWords == 2 =
-    if | isJust (readMay $ head stringWords :: Maybe Int) &&
-           elem (last stringWords) teamNames
-         -> Left $ Team (read $ head stringWords :: Int) $ last stringWords
-       | otherwise -> Right $ CustomError 3 "Invalid team name or number"
-  | otherwise = Right $ CustomError 6 "Too many arguments"
+  = if | length stringWords == 0 -> Right $ CustomError 2 "No arguments"
+       | elem (head stringWords) ["add", "del", "help", "quit", "exit"] ->
+         Right $ CustomError 0 ""
+       | length stringWords == 1 ->
+         if | elem (head stringWords) teamNames ->
+              Left $ Team 1 $ head stringWords
+            | otherwise -> Right $ CustomError 3 "Invalid input"
+       | length stringWords == 2 ->
+         if | isJust (readMay $ head stringWords :: Maybe Int) &&
+                elem (last stringWords) teamNames
+              -> Left $ Team (read $ head stringWords :: Int) $ last stringWords
+            | otherwise -> Right $ CustomError 3 "Invalid team name or number"
+       | otherwise -> Right $ CustomError 6 "Too many arguments"
 
   where teamNames = map name teamList
         stringWords = words string
@@ -87,52 +88,54 @@ removeTeams stringWordsTail teamList
 -- a convenient helper function in which to stick some of the IO logic to make it pure and easier to deal with
 ioTree :: String -> [Team] -> IO ()
 ioTree string teamList
-  | isLeft stringTeam = loop $ updateTeams (stringTeamFromLeft) teamList
-  | otherwise =
-    if | code stringTeamFromRight == 0 ->
-         if | head stringWords == "add" ->
-              if | length stringWords > 1 ->
-                   if | or [elem x teamNames | x <- tail stringWords] ->
-                        do print $
-                             CustomError 4
-                               "One of the names provided is already a team"
-                           loop teamList
-                      | otherwise ->
-                        loop $ appendTeams (tail stringWords) teamList
-                 | otherwise ->
-                   do print $ CustomError 2 "No arguments"
-                      loop teamList
-            | head stringWords == "del" ->
-              if | length stringWords > 1 ->
-                   if | not $ and [elem x teamNames | x <- tail stringWords] ->
-                        do print $
-                             CustomError 5
-                               "One of the names provided is not a team"
-                           loop teamList
-                      | otherwise ->
-                        loop $ removeTeams (tail stringWords) teamList
-                 | otherwise ->
-                   do print $ CustomError 2 "No arguments"
-                      loop teamList
-            | head stringWords == "help" ->
-              do putStrLn $ replicate 24 '-'
-                 putStr $
-                   unlines
-                     ["change a team's score:                                                        ",
-                      "  enter just a team name                - add 1 to that team                  ",
-                      "  enter an integer and then a team name - add that integer to that team       ",
-                      "edit the list of teams:                                                       ",
-                      "  enter \"add\" then one or more team names - add those teams to the list     ",
-                      "  enter \"del\" then one or more team names - remove those teams from the list",
-                      "show this message: enter \"help\"                                             "]
-                 loop teamList
-            | elem (head stringWords) ["quit", "exit"] -> return ()
-            | otherwise ->
-              do print $ CustomError 3 "Invalid input"
-                 loop teamList
+  = if | isLeft stringTeam -> loop $ updateTeams (stringTeamFromLeft) teamList
        | otherwise ->
-         do print $ stringTeamFromRight
-            loop teamList
+         if | code stringTeamFromRight == 0 ->
+              if | head stringWords == "add" ->
+                   if | length stringWords > 1 ->
+                        if | or [elem x teamNames | x <- tail stringWords] ->
+                             do print $
+                                  CustomError 4
+                                    "One of the names provided is already a team"
+                                loop teamList
+                           | otherwise ->
+                             loop $ appendTeams (tail stringWords) teamList
+                      | otherwise ->
+                        do print $ CustomError 2 "No arguments"
+                           loop teamList
+                 | head stringWords == "del" ->
+                   if | length stringWords > 1 ->
+                        if | not $
+                               and [elem x teamNames | x <- tail stringWords]
+                             ->
+                             do print $
+                                  CustomError 5
+                                    "One of the names provided is not a team"
+                                loop teamList
+                           | otherwise ->
+                             loop $ removeTeams (tail stringWords) teamList
+                      | otherwise ->
+                        do print $ CustomError 2 "No arguments"
+                           loop teamList
+                 | head stringWords == "help" ->
+                   do putStrLn $ replicate 24 '-'
+                      putStr $
+                        unlines
+                          ["change a team's score:                                                        ",
+                           "  enter just a team name                - add 1 to that team                  ",
+                           "  enter an integer and then a team name - add that integer to that team       ",
+                           "edit the list of teams:                                                       ",
+                           "  enter \"add\" then one or more team names - add those teams to the list     ",
+                           "  enter \"del\" then one or more team names - remove those teams from the list",
+                           "show this message: enter \"help\"                                             "]
+                      loop teamList
+                 | elem (head stringWords) ["quit", "exit"] -> return ()
+                 | otherwise ->
+                   do print $ CustomError 3 "Invalid input"
+                      loop teamList
+            | otherwise ->
+              do print $ stringTeamFromRight
+                 loop teamList
 
   where stringTeam = teamFromInput string teamList
         stringWords = words string
