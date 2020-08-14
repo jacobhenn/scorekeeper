@@ -40,7 +40,3 @@ $ scorekeeper bill bob joe
 # Compile
 
 `ghc --make scorekeeper`
-
-# Known Issues
-
-Entering a two-word command where the first word is nonsense and the second word is one of the team names causes the exception `Prelude.read: no parse`. The cause of this is known and it will be fixed.

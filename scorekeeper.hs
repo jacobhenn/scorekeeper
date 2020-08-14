@@ -1,5 +1,6 @@
 {-# LANGUAGE MultiWayIf #-}
 
+import Safe
 import Data.List
 import System.IO
 import Data.Maybe
@@ -8,7 +9,6 @@ import Control.Lens
 import Control.Monad
 import System.Environment
 
--- a couple datatypes for fun and readability
 data CustomError = CustomError { code        :: Int
                                , description :: String }
 
@@ -42,18 +42,18 @@ prompt x = do
     hFlush stdout
     getLine
 
--- IMPORTANT : this whole function needs a rewrite
+-- takes a string and parses it into a team. fails gracefully if the input is invalid.
 teamFromInput :: String -> [Team] -> Either Team CustomError
 teamFromInput string teamList
     | length stringWords == 0 = Right $ CustomError 2 "No arguments"
     | elem (head stringWords) ["add", "del", "help", "quit", "exit"] = Right $ CustomError 0 ""
     | length stringWords == 1 = if
         | elem (head stringWords) teamNames -> Left $ Team 1 $ head stringWords
-        | otherwise                         -> Right noTeam
+        | otherwise                         -> Right $ CustomError 3 "Invalid input"
     | length stringWords == 2 = if
-        | elem (last stringWords) teamNames -> Left $ Team (read $ head stringWords :: Int) $ last stringWords
-        | otherwise                         -> Right noTeam
-    | otherwise = Right $ CustomError 3 "Invalid input"
+        | isJust (readMay $ head stringWords :: Maybe Int) && elem (last stringWords) teamNames -> Left  $ Team (read $ head stringWords :: Int) $ last stringWords
+        | otherwise                                                                             -> Right $ CustomError 3 "Invalid team name or number"
+    | otherwise = Right $ CustomError 6 "Too many arguments"
 
     where teamNames   = map name teamList
           stringWords = words string
