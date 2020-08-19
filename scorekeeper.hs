@@ -54,7 +54,7 @@ prompt x
 -- always gracefully return a CustomError instead of throwing an exception
 teamFromInput :: String -> [Team] -> Either Team CustomError
 teamFromInput string teamList
-  = if | length stringWords == 0 -> Right $ CustomError 2 "No arguments"
+  = if | null stringWords -> Right $ CustomError 2 "No arguments"
        | elem (head stringWords)
            ["add", "rm", "help", "quit", "exit", "save", "load", "ls", "acc"]
          -> Right $ CustomError 0 ""
@@ -91,13 +91,13 @@ appendTeams stringWordsTail teamList
 -- removes one or more teams from a list, by name
 removeTeams :: [String] -> [Team] -> [Team]
 removeTeams stringWordsTail teamList
-  = deleteFirstsBy (\x y -> if name y == name x then True else False) teamList $ map (Team 0) stringWordsTail
+  = deleteFirstsBy (\x y -> name x == name y) teamList $ map (Team 0) stringWordsTail
 --------------------------------------------------------------------------------
 -- turn a string read from a file encoded with encodeSave and turn it back into
 -- a list of teams
 parseSave :: String -> [Team]
 parseSave string
-  = zipWith (Team) (map read $ map head stringWords :: [Int]) $
+  = zipWith Team (map (read . head) stringWords :: [Int]) $
       map last stringWords
   where stringWords = map words $ lines string
 --------------------------------------------------------------------------------
@@ -107,7 +107,7 @@ encodeSave teamList = unlines $ map show teamList
 --------------------------------------------------------------------------------
 -- take two lists of teams with the same names and add their scores together
 accumulateSave :: [Team] -> [Team] -> [Team]
-accumulateSave accList newList = zipWith (Team) newScores teamNames
+accumulateSave accList newList = zipWith Team newScores teamNames
   where teamNames = map name newList
         addScores = map score newList
         accScores = map score accList
@@ -117,7 +117,7 @@ accumulateSave accList newList = zipWith (Team) newScores teamNames
 -- it pure and easier to deal with
 ioLogic :: String -> [Team] -> IO ()
 ioLogic string teamList
-  = if | isLeft stringTeam -> loop $ updateTeams (stringTeamFromLeft) teamList
+  = if | isLeft stringTeam -> loop $ updateTeams stringTeamFromLeft teamList
        | otherwise ->
          if | code stringTeamFromRight == 0 ->
 --------------------------------------------------------------------------------
@@ -173,7 +173,7 @@ ioLogic string teamList
                  | head stringWords == "load" ->
                    if | length stringWords == 2 ->
                         do saves <- listDirectory saveDir
-                           if (elem (last stringWords) saves) then
+                           if elem (last stringWords) saves then
                              do rawSave <- readFile $
                                              saveDir ++ last stringWords
                                 loop $ parseSave rawSave
@@ -222,7 +222,7 @@ ioLogic string teamList
                    do print $ CustomError 3 "Invalid input"
                       loop teamList
             | otherwise ->
-              do print $ stringTeamFromRight
+              do print stringTeamFromRight
                  loop teamList
   where stringTeam = teamFromInput string teamList
         stringWords = words string
