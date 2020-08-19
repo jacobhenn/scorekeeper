@@ -1,3 +1,6 @@
+--------------------------------------------------------------------------------
+-- Author: Jacob Henn
+--------------------------------------------------------------------------------
 {-# LANGUAGE MultiWayIf #-}
 import Control.Lens
 import Control.Monad
@@ -9,19 +12,20 @@ import Safe
 import System.Directory
 import System.Environment
 import System.IO
-
+--------------------------------------------------------------------------------
+-- EDIT THIS VARIABLE TO CHANGE THE DIRECTORY YOUR SAVES ARE STORED IN
 saveDir :: String
--- EDIT THE VARIABLE BELOW TO CHANGE THE DIRECTORY YOU WANT TO STORE YOUR SAVED SCORES
-saveDir = "/home/jacob/.config/scorekeeper/saves/"
-
--- EDIT THE VARIABLE ABOVE TO CHANGE THE DIRECTORY YOU WANT TO STORE YOUR SAVED SCORES
-
+saveDir = "saves"
+--------------------------------------------------------------------------------
+-- error datatype that includes an embedded description
 data CustomError = CustomError{code :: Int, description :: String}
-
+--------------------------------------------------------------------------------
+-- helper datatype to simplify working with Teams, which are just pairs of
+-- Ints and Strings in that order
 data Team = Team{score :: Int, name :: String}
               deriving (Eq)
-
--- a couple helpful instances for those datatypes
+--------------------------------------------------------------------------------
+-- instances to make working with these datatypes easier
 instance Show CustomError where
         show (CustomError code description)
           = "E" ++ show code ++ " " ++ description
@@ -32,26 +36,22 @@ instance Show Team where
 instance Ord Team where
         (Team teamScore _) `compare` (Team teamScore' _)
           = teamScore `compare` teamScore'
-
-nameEq :: Team -> Team -> Bool
-nameEq team team'
-  | name team == name team' = True
-  | otherwise = False
-
--- some helper functions for updateTeams
--- take two teams with the same name and add their scores
+--------------------------------------------------------------------------------
+-- take two teams and return a new team with the same name, but a score equal to
+-- the scores of the two input teams added together
 addTeams :: Team -> Team -> Team
 addTeams (Team teamScore _) (Team teamScore' teamName)
   = Team (teamScore + teamScore') teamName
-
+--------------------------------------------------------------------------------
 -- an IO-safe composition of putStr and getLine
 prompt :: String -> IO String
 prompt x
   = do putStr x
        hFlush stdout
        getLine
-
--- takes a string and parses it into a team. fails gracefully if the input is invalid.
+--------------------------------------------------------------------------------
+-- takes a string and parses it into a team. If the input is invalid, it will
+-- always gracefully return a CustomError instead of throwing an exception
 teamFromInput :: String -> [Team] -> Either Team CustomError
 teamFromInput string teamList
   = if | length stringWords == 0 -> Right $ CustomError 2 "No arguments"
@@ -71,8 +71,9 @@ teamFromInput string teamList
   where teamNames = map name teamList
         stringWords = words string
         noTeam = CustomError 1 "Not a valid team name"
-
--- the main function that takes a new score to add and a list of Teams to update.
+--------------------------------------------------------------------------------
+-- takes an input team and a list of teams and uses lens magic to add the input
+-- team to the corresponding entry in the team list
 updateTeams :: Team -> [Team] -> [Team]
 updateTeams inputTeam@(Team teamScore teamName) teamList
   = sort $ teamList & element teamIndex .~ newTeam
@@ -81,27 +82,29 @@ updateTeams inputTeam@(Team teamScore teamName) teamList
         teamIndex = head $ elemIndices teamName teamNames
         oldTeam = teamList !! teamIndex
         newTeam = addTeams oldTeam inputTeam
-
+--------------------------------------------------------------------------------
 -- appends one or more blank teams to a team list
 appendTeams :: [String] -> [Team] -> [Team]
 appendTeams stringWordsTail teamList
   = sort $ teamList ++ map (Team 0) stringWordsTail
-
+--------------------------------------------------------------------------------
+-- removes one or more teams from a list, by name
 removeTeams :: [String] -> [Team] -> [Team]
 removeTeams stringWordsTail teamList
-  = deleteFirstsBy nameEq teamList $ map (Team 0) stringWordsTail
-
--- turn a string read from a file encoded with encodeSave and turn it back into a list of teams
+  = deleteFirstsBy (\x y -> if name y == name x then True else False) teamList $ map (Team 0) stringWordsTail
+--------------------------------------------------------------------------------
+-- turn a string read from a file encoded with encodeSave and turn it back into
+-- a list of teams
 parseSave :: String -> [Team]
 parseSave string
   = zipWith (Team) (map read $ map head stringWords :: [Int]) $
       map last stringWords
   where stringWords = map words $ lines string
-
+--------------------------------------------------------------------------------
 -- turn the team list into something that can be written to a file
 encodeSave :: [Team] -> String
 encodeSave teamList = unlines $ map show teamList
-
+--------------------------------------------------------------------------------
 -- take two lists of teams with the same names and add their scores together
 accumulateSave :: [Team] -> [Team] -> [Team]
 accumulateSave accList newList = zipWith (Team) newScores teamNames
@@ -109,13 +112,16 @@ accumulateSave accList newList = zipWith (Team) newScores teamNames
         addScores = map score newList
         accScores = map score accList
         newScores = zipWith (+) addScores accScores
-
--- a convenient helper function in which to stick some of the IO logic to make it pure and easier to deal with
-ioTree :: String -> [Team] -> IO ()
-ioTree string teamList
+--------------------------------------------------------------------------------
+-- a convenient helper function in which to stick some of the IO logic to make
+-- it pure and easier to deal with
+ioLogic :: String -> [Team] -> IO ()
+ioLogic string teamList
   = if | isLeft stringTeam -> loop $ updateTeams (stringTeamFromLeft) teamList
        | otherwise ->
          if | code stringTeamFromRight == 0 ->
+--------------------------------------------------------------------------------
+                 -- add one or more teams to the list
               if | head stringWords == "add" ->
                    if | length stringWords > 1 ->
                         if | or [elem x teamNames | x <- tail stringWords] ->
@@ -131,6 +137,8 @@ ioTree string teamList
                       | otherwise ->
                         do print $ CustomError 2 "No arguments"
                            loop teamList
+--------------------------------------------------------------------------------
+                 -- remove one or more teams from the list
                  | head stringWords == "rm" ->
                    if | length stringWords > 1 ->
                         if | not $
@@ -145,6 +153,8 @@ ioTree string teamList
                       | otherwise ->
                         do print $ CustomError 2 "No arguments"
                            loop teamList
+--------------------------------------------------------------------------------
+                 -- save the current teams into a local file
                  | head stringWords == "save" ->
                    if | length stringWords == 2 ->
                         if | head stringWords == "save" ->
@@ -158,6 +168,8 @@ ioTree string teamList
                            | otherwise ->
                              do print $ CustomError 6 "Too many arguments"
                                 loop teamList
+--------------------------------------------------------------------------------
+                 -- load a previous save file into the teams list
                  | head stringWords == "load" ->
                    if | length stringWords == 2 ->
                         do saves <- listDirectory saveDir
@@ -178,22 +190,33 @@ ioTree string teamList
                            | otherwise ->
                              do print $ CustomError 6 "Too many arguments"
                                 loop teamList
+--------------------------------------------------------------------------------
+                 -- list all the save files in the given directory
                  | head stringWords == "ls" ->
                    do saves <- listDirectory saveDir
                       putStr $ unlines saves
                       loop teamList
+--------------------------------------------------------------------------------
+                 -- print the list of helpful functions
                  | head stringWords == "help" ->
                    do putStrLn $ replicate 24 '-'
                       putStr $
                         unlines
-                          ["change a team's score:                                                        ",
-                           "  enter just a team name                - add 1 to that team                  ",
-                           "  enter an integer and then a team name - add that integer to that team       ",
-                           "edit the list of teams:                                                       ",
-                           "  enter \"add\" then one or more team names - add those teams to the list     ",
-                           "  enter \"del\" then one or more team names - remove those teams from the list",
-                           "show this message: enter \"help\"                                             "]
+                          ["change a team's score:                                                                                                           "
+                          ,"  enter just a team name                - add 1 to that team                                                                     "
+                          ,"  enter an integer and then a team name - add that integer to that team                                                          "
+                          ,"edit the list of teams:                                                                                                          "
+                          ,"  enter \"add\" then one or more team names - add those teams to the list                                                        "
+                          ,"  enter \"rm\" then one or more team names  - remove those teams from the list                                                   "
+                          ,"manipulate save files:                                                                                                           "
+                          ,"  enter \"load\" then a save file name - discard the current scores and load teams from the file                                 "
+                          ,"  enter \"save\" then a name           - save the current scores to a file of that name, and overwrite if the file already exists"
+                          ,"  enter \"ls\"                         - list all save files                                                                     "
+                          ,"show this message: enter \"help\"                                                                                                "
+                          ]
                       loop teamList
+--------------------------------------------------------------------------------
+                 -- exit out of loop to the shell
                  | elem (head stringWords) ["quit", "exit"] -> return ()
                  | otherwise ->
                    do print $ CustomError 3 "Invalid input"
@@ -206,16 +229,18 @@ ioTree string teamList
         stringTeamFromRight = fromRight (CustomError 0 "") stringTeam
         stringTeamFromLeft = fromLeft (Team 0 "") stringTeam
         teamNames = map name teamList
-
--- the main loop function that takes the list of teams along with it and runs updateteams on every input
+--------------------------------------------------------------------------------
+-- the main loop function that takes the list of teams along with it and runs
+-- ioLogic on every input
 loop :: [Team] -> IO ()
 loop list
   = do putStrLn $ replicate 24 '-'
        mapM_ print list
        line <- prompt "[scorekeeper] "
-       ioTree line list
-
--- the actual main function that is called at the beginning of the program and asks the player to initialize a list of teams
+       ioLogic line list
+--------------------------------------------------------------------------------
+-- the actual main function that is called at the beginning of the program and
+-- asks the player to initialize a list of teams
 main
   = do putStrLn "Enter \"help\" to see a list of commands."
        args <- getArgs

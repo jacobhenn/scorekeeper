@@ -34,6 +34,28 @@ $ scorekeeper bill bob joe
 0 bill
 0 dave
 5 joe
+[scorekeeper] save test
+------------------------
+0 bill
+0 dave
+5 joe
+[scorekeeper] ls
+test
+------------------------
+0 bill
+0 dave
+5 joe
+[scorekeeper] add florb
+------------------------
+0 bill
+0 dave
+0 florb
+5 joe
+[scorekeeper] load test
+------------------------
+0 bill
+0 dave
+5 joe
 [scorekeeper] quit
 ```
 
