@@ -1,13 +1,20 @@
 {-# LANGUAGE MultiWayIf #-}
-
 import Control.Lens
 import Control.Monad
+
 import Data.Either
 import Data.List
 import Data.Maybe
 import Safe
+import System.Directory
 import System.Environment
 import System.IO
+
+saveDir :: String
+-- EDIT THE VARIABLE BELOW TO CHANGE THE DIRECTORY YOU WANT TO STORE YOUR SAVED SCORES
+saveDir = "/home/jacob/.config/scorekeeper/saves/"
+
+-- EDIT THE VARIABLE ABOVE TO CHANGE THE DIRECTORY YOU WANT TO STORE YOUR SAVED SCORES
 
 data CustomError = CustomError{code :: Int, description :: String}
 
@@ -48,8 +55,9 @@ prompt x
 teamFromInput :: String -> [Team] -> Either Team CustomError
 teamFromInput string teamList
   = if | length stringWords == 0 -> Right $ CustomError 2 "No arguments"
-       | elem (head stringWords) ["add", "del", "help", "quit", "exit"] ->
-         Right $ CustomError 0 ""
+       | elem (head stringWords)
+           ["add", "rm", "help", "quit", "exit", "save", "load", "ls", "acc"]
+         -> Right $ CustomError 0 ""
        | length stringWords == 1 ->
          if | elem (head stringWords) teamNames ->
               Left $ Team 1 $ head stringWords
@@ -60,7 +68,6 @@ teamFromInput string teamList
               -> Left $ Team (read $ head stringWords :: Int) $ last stringWords
             | otherwise -> Right $ CustomError 3 "Invalid team name or number"
        | otherwise -> Right $ CustomError 6 "Too many arguments"
-
   where teamNames = map name teamList
         stringWords = words string
         noTeam = CustomError 1 "Not a valid team name"
@@ -69,7 +76,6 @@ teamFromInput string teamList
 updateTeams :: Team -> [Team] -> [Team]
 updateTeams inputTeam@(Team teamScore teamName) teamList
   = sort $ teamList & element teamIndex .~ newTeam
-
   where teamNames = map name teamList
         teamScores = map score teamList
         teamIndex = head $ elemIndices teamName teamNames
@@ -84,6 +90,25 @@ appendTeams stringWordsTail teamList
 removeTeams :: [String] -> [Team] -> [Team]
 removeTeams stringWordsTail teamList
   = deleteFirstsBy nameEq teamList $ map (Team 0) stringWordsTail
+
+-- turn a string read from a file encoded with encodeSave and turn it back into a list of teams
+parseSave :: String -> [Team]
+parseSave string
+  = zipWith (Team) (map read $ map head stringWords :: [Int]) $
+      map last stringWords
+  where stringWords = map words $ lines string
+
+-- turn the team list into something that can be written to a file
+encodeSave :: [Team] -> String
+encodeSave teamList = unlines $ map show teamList
+
+-- take two lists of teams with the same names and add their scores together
+accumulateSave :: [Team] -> [Team] -> [Team]
+accumulateSave accList newList = zipWith (Team) newScores teamNames
+  where teamNames = map name newList
+        addScores = map score newList
+        accScores = map score accList
+        newScores = zipWith (+) addScores accScores
 
 -- a convenient helper function in which to stick some of the IO logic to make it pure and easier to deal with
 ioTree :: String -> [Team] -> IO ()
@@ -100,10 +125,13 @@ ioTree string teamList
                                 loop teamList
                            | otherwise ->
                              loop $ appendTeams (tail stringWords) teamList
+                           | otherwise ->
+                             do print $ CustomError 2 "No arguments"
+                                loop teamList
                       | otherwise ->
                         do print $ CustomError 2 "No arguments"
                            loop teamList
-                 | head stringWords == "del" ->
+                 | head stringWords == "rm" ->
                    if | length stringWords > 1 ->
                         if | not $
                                and [elem x teamNames | x <- tail stringWords]
@@ -117,6 +145,43 @@ ioTree string teamList
                       | otherwise ->
                         do print $ CustomError 2 "No arguments"
                            loop teamList
+                 | head stringWords == "save" ->
+                   if | length stringWords == 2 ->
+                        if | head stringWords == "save" ->
+                             do writeFile (saveDir ++ last stringWords) $
+                                  encodeSave teamList
+                                loop teamList
+                      | otherwise ->
+                        if | length stringWords < 2 ->
+                             do print $ CustomError 2 "No arguments"
+                                loop teamList
+                           | otherwise ->
+                             do print $ CustomError 6 "Too many arguments"
+                                loop teamList
+                 | head stringWords == "load" ->
+                   if | length stringWords == 2 ->
+                        do saves <- listDirectory saveDir
+                           if (elem (last stringWords) saves) then
+                             do rawSave <- readFile $
+                                             saveDir ++ last stringWords
+                                loop $ parseSave rawSave
+                             else
+                             do print $
+                                  CustomError 7 $
+                                    "Save file \"" ++
+                                      last stringWords ++ "\" does not exist"
+                                loop teamList
+                      | otherwise ->
+                        if | length stringWords < 2 ->
+                             do print $ CustomError 2 "No arguments"
+                                loop teamList
+                           | otherwise ->
+                             do print $ CustomError 6 "Too many arguments"
+                                loop teamList
+                 | head stringWords == "ls" ->
+                   do saves <- listDirectory saveDir
+                      putStr $ unlines saves
+                      loop teamList
                  | head stringWords == "help" ->
                    do putStrLn $ replicate 24 '-'
                       putStr $
@@ -136,7 +201,6 @@ ioTree string teamList
             | otherwise ->
               do print $ stringTeamFromRight
                  loop teamList
-
   where stringTeam = teamFromInput string teamList
         stringWords = words string
         stringTeamFromRight = fromRight (CustomError 0 "") stringTeam
