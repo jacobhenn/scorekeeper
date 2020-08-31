@@ -15,7 +15,7 @@ import System.IO
 --------------------------------------------------------------------------------
 -- EDIT THIS VARIABLE TO CHANGE THE DIRECTORY YOUR SAVES ARE STORED IN
 saveDir :: String
-saveDir = "saves"
+saveDir = "saves/"
 --------------------------------------------------------------------------------
 -- error datatype that includes an embedded description
 data CustomError = CustomError{code :: Int, description :: String}
