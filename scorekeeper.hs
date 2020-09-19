@@ -28,6 +28,23 @@ vec = V.fromList
 upd x y z = V.update x $ V.cons (y, z) V.empty
 
 --------------------------------------------------------------------------------
+-- string printed by the help command
+helpString :: String
+helpString
+  = unlines $
+      ["change a team's score:",
+       "  enter just a team name                - add 1 to that team",
+       "  enter an integer and then a team name - add that integer to that team",
+       "edit the list of teams:",
+       "  enter \"add\" then one or more team names - add those teams to the list",
+       "  enter \"rm\" then one or more team names  - remove those teams from the list",
+       -- "manipulate save files:",
+       -- "  enter \"load\" then a save file name - discard the current scores and load teams from the file",
+       -- "  enter \"save\" then a name           - save the current scores to a file of that name, and overwrite if the file already exists",
+       -- "  enter \"ls\"                         - list all save files",
+       "show this message: enter \"help\""]
+
+--------------------------------------------------------------------------------
 -- in this case, I want Eithers instead of Maybes
 toEither :: a -> Maybe b -> Either a b
 toEither x y = fromMaybe (Left x) $ Right <$> y
@@ -47,11 +64,8 @@ addPoints x (Team a b) = Team (a + x) b
 
 --------------------------------------------------------------------------------
 -- remove a team of the specified name from the vector
-removeTeam :: String -> V.Vector Team -> Either String (V.Vector Team)
-removeTeam s ts
-  = V.ifilter <$> (flip <$> const <$> ((/=) <$> index)) <*> return ts
-  where index
-          = toEither (s ++ " is not a team") $ V.findIndex ((s ==) . name) ts
+removeTeam :: String -> V.Vector Team -> V.Vector Team
+removeTeam s ts = V.filter (\ x -> name x /= s) ts
 
 --------------------------------------------------------------------------------
 -- look up a team and modify it from an input string
@@ -78,11 +92,11 @@ updateTeams input teamVec
     case command of
         "add" -> Right $
                    V.modify VA.sort $ V.map (Team 0) (vec args) V.++ teamVec
-        "rm" -> foldl (>>=) (return teamVec) (map removeTeam args)
+        "rm" -> Right $ foldl1 (.) (map removeTeam args) $ teamVec
         otherwise -> case length inputWords of
-                       1 -> addTeams ("1 " ++ command) teamVec
-                       2 -> addTeams (input) teamVec
-                       otherwise -> Left "too many arguments"
+                         1 -> addTeams ("1 " ++ command) teamVec
+                         2 -> addTeams (input) teamVec
+                         otherwise -> Left "too many arguments"
   where inputWords = words input
         args = tail inputWords
         command = head inputWords
@@ -90,11 +104,19 @@ updateTeams input teamVec
 --------------------------------------------------------------------------------
 -- choose which IO action to do next based off of user input
 ioLogic :: String -> V.Vector Team -> Either String (V.Vector Team) -> IO ()
-ioLogic input teamVec newTeamVec =
-    if | elem (concat $ words input) ["quit", "exit"] -> return ()
+ioLogic input teamVec newTeamVec
+  = if | elem input ["quit", "exit"] -> return ()
+       | command == "help" ->
+         do putStr helpString
+            loop teamVec
        | otherwise ->
-           if | isRight newTeamVec -> loop $ fromRight undefined newTeamVec
-              | otherwise -> loop teamVec
+         if | isRight newTeamVec -> loop $ fromRight undefined newTeamVec
+            | otherwise ->
+              do putStrLn $ "Error: " ++ fromLeft undefined newTeamVec
+                 loop teamVec
+  where inputWords = words input
+        command = head inputWords
+        args = tail inputWords
 
 --------------------------------------------------------------------------------
 -- main loop which carries the team vector with it through infinity
