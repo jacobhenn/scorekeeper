@@ -3,3 +3,5 @@
 .hlint.yaml
 saves/*
 !saves/example
+scorekeeper
+.scorekeeper.hs
