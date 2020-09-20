@@ -74,7 +74,7 @@ addTeams input teamSeq
               :: Either String Int
         teamName = last inputWords
         teamIndex
-          = toEither (last inputWords ++ " is not a team") $
+          = toEither (teamName ++ " is not a team") $
               elemIndexL teamName $ name <$> teamSeq
         newTeam = addPoints <$> newPoints <*> (index teamSeq <$> teamIndex)
 
@@ -82,12 +82,12 @@ addTeams input teamSeq
 -- change the sequence of teams based off of user input
 updateTeams :: String -> Seq Team -> Either String (Seq Team)
 updateTeams input teamSeq
-  | L.length inputWords == 0 = Left "no input"
+  | L.null inputWords = Left "no input"
   | otherwise =
     case command of
         "add" -> Right $
                    sort $ teamSeq >< ((Team 0) <$> fromList args)
-        "rm" -> Right $ foldl1 (.) (map removeTeam args) $ teamSeq
+        "rm" -> Right $ L.foldl1' (.) (map removeTeam args) $ teamSeq
         otherwise -> case L.length inputWords of
                          1 -> addTeams ("1 " ++ command) teamSeq
                          2 -> addTeams (input) teamSeq
