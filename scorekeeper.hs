@@ -3,15 +3,15 @@
 -- Author: Jacob Henn
 --------------------------------------------------------------------------------
 {-# LANGUAGE MultiWayIf #-}
-import Prelude hiding (replicate, length, filter)
 import Control.Monad
 import Data.Either
+import qualified Data.List as L
 import Data.Maybe
 import Data.Sequence
+import Prelude hiding (filter, length, replicate)
 import qualified Safe as S
 import System.Environment
 import System.IO
-import qualified Data.List as L
 
 --------------------------------------------------------------------------------
 -- team datatype for storing an integer and string
@@ -85,9 +85,9 @@ updateTeams input teamSeq
   | L.null inputWords = Left "no input"
   | otherwise =
     case command of
-        "add" -> Right $
-                   sort $ teamSeq >< ((Team 0) <$> fromList args)
-        "rm" -> Right $ L.foldl1' (.) (map removeTeam args) $ teamSeq
+        "add" -> Right $ sort $ teamSeq >< ((Team 0) <$> fromList args)
+        "rm" -> toEither "no arguments" $
+                  S.foldl1May (.) (map removeTeam args) <*> return teamSeq
         otherwise -> case L.length inputWords of
                          1 -> addTeams ("1 " ++ command) teamSeq
                          2 -> addTeams (input) teamSeq
@@ -118,7 +118,9 @@ ioLogic input teamSeq newTeamSeq
 loop :: Seq Team -> IO ()
 loop teamSeq
   = do putStrLn $ L.replicate 24 '-'
-       putStrLn $ foldl1 (\x y -> x ++ "\n" ++ y) $ (\ (Team s n) -> show s ++ " " ++ n) <$> teamSeq
+       putStrLn $
+         foldl1 (\ x y -> x ++ "\n" ++ y) $
+           (\ (Team s n) -> show s ++ " " ++ n) <$> teamSeq
        input <- prompt "[scorekeeper] "
        ioLogic input teamSeq $ updateTeams input teamSeq
 
