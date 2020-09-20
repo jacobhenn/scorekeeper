@@ -58,6 +58,7 @@ test
 5 joe
 [scorekeeper] quit
 ```
+(saving and loading functionality is temporarily unavailable due to rewrite)
 
 # Compile
 

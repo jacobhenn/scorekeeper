@@ -3,14 +3,15 @@
 -- Author: Jacob Henn
 --------------------------------------------------------------------------------
 {-# LANGUAGE MultiWayIf #-}
+import Prelude hiding (replicate, length, filter)
 import Control.Monad
 import Data.Either
 import Data.Maybe
-import qualified Data.Vector as V
-import qualified Data.Vector.Algorithms.Intro as VA
+import Data.Sequence
 import qualified Safe as S
 import System.Environment
 import System.IO
+import qualified Data.List as L
 
 --------------------------------------------------------------------------------
 -- team datatype for storing an integer and string
@@ -20,12 +21,6 @@ data Team = Team{score :: Int, name :: String}
 instance Ord Team where
         (Team teamScore _) `compare` (Team teamScore' _)
           = teamScore `compare` teamScore'
-
---------------------------------------------------------------------------------
--- handy abbreviations
-vec = V.fromList
-(!) = (V.!)
-upd x y z = V.update x $ V.cons (y, z) V.empty
 
 --------------------------------------------------------------------------------
 -- string printed by the help command
@@ -63,15 +58,15 @@ addPoints :: Int -> Team -> Team
 addPoints x (Team a b) = Team (a + x) b
 
 --------------------------------------------------------------------------------
--- remove a team of the specified name from the vector
-removeTeam :: String -> V.Vector Team -> V.Vector Team
-removeTeam s ts = V.filter (\ x -> name x /= s) ts
+-- remove a team of the specified name from the sequence
+removeTeam :: String -> Seq Team -> Seq Team
+removeTeam s ts = filter (\ x -> name x /= s) ts
 
 --------------------------------------------------------------------------------
 -- look up a team and modify it from an input string
-addTeams :: String -> V.Vector Team -> Either String (V.Vector Team)
-addTeams input teamVec
-  = V.modify VA.sort <$> (upd teamVec <$> teamIndex <*> newTeam)
+addTeams :: String -> Seq Team -> Either String (Seq Team)
+addTeams input teamSeq
+  = sort <$> (update <$> teamIndex <*> newTeam <*> return teamSeq)
   where inputWords = words input
         newPoints
           = toEither (head inputWords ++ " is not a number") $
@@ -80,22 +75,22 @@ addTeams input teamVec
         teamName = last inputWords
         teamIndex
           = toEither (last inputWords ++ " is not a team") $
-              V.elemIndex teamName (V.map name teamVec)
-        newTeam = addPoints <$> newPoints <*> ((teamVec !) <$> teamIndex)
+              elemIndexL teamName $ name <$> teamSeq
+        newTeam = addPoints <$> newPoints <*> (index teamSeq <$> teamIndex)
 
 --------------------------------------------------------------------------------
--- change the vector of teams based off of user input
-updateTeams :: String -> V.Vector Team -> Either String (V.Vector Team)
-updateTeams input teamVec
-  | length inputWords == 0 = Left "no input"
+-- change the sequence of teams based off of user input
+updateTeams :: String -> Seq Team -> Either String (Seq Team)
+updateTeams input teamSeq
+  | L.length inputWords == 0 = Left "no input"
   | otherwise =
     case command of
         "add" -> Right $
-                   V.modify VA.sort $ V.map (Team 0) (vec args) V.++ teamVec
-        "rm" -> Right $ foldl1 (.) (map removeTeam args) $ teamVec
-        otherwise -> case length inputWords of
-                         1 -> addTeams ("1 " ++ command) teamVec
-                         2 -> addTeams (input) teamVec
+                   sort $ teamSeq >< ((Team 0) <$> fromList args)
+        "rm" -> Right $ foldl1 (.) (map removeTeam args) $ teamSeq
+        otherwise -> case L.length inputWords of
+                         1 -> addTeams ("1 " ++ command) teamSeq
+                         2 -> addTeams (input) teamSeq
                          otherwise -> Left "too many arguments"
   where inputWords = words input
         args = tail inputWords
@@ -103,34 +98,34 @@ updateTeams input teamVec
 
 --------------------------------------------------------------------------------
 -- choose which IO action to do next based off of user input
-ioLogic :: String -> V.Vector Team -> Either String (V.Vector Team) -> IO ()
-ioLogic input teamVec newTeamVec
+ioLogic :: String -> Seq Team -> Either String (Seq Team) -> IO ()
+ioLogic input teamSeq newTeamSeq
   = if | elem input ["quit", "exit"] -> return ()
-       | command == "help" ->
+       | input == "help" ->
          do putStr helpString
-            loop teamVec
+            loop teamSeq
        | otherwise ->
-         if | isRight newTeamVec -> loop $ fromRight undefined newTeamVec
+         if | isRight newTeamSeq -> loop $ fromRight undefined newTeamSeq
             | otherwise ->
-              do putStrLn $ "Error: " ++ fromLeft undefined newTeamVec
-                 loop teamVec
+              do putStrLn $ "Error: " ++ fromLeft undefined newTeamSeq
+                 loop teamSeq
   where inputWords = words input
         command = head inputWords
         args = tail inputWords
 
 --------------------------------------------------------------------------------
--- main loop which carries the team vector with it through infinity
-loop :: V.Vector Team -> IO ()
-loop teamVec
-  = do putStrLn $ replicate 24 '-'
-       V.mapM_ putStrLn $ V.map (\ (Team s n) -> show s ++ " " ++ n) teamVec
+-- main loop which carries the team sequence with it through infinity
+loop :: Seq Team -> IO ()
+loop teamSeq
+  = do putStrLn $ L.replicate 24 '-'
+       putStrLn $ foldl1 (\x y -> x ++ "\n" ++ y) $ (\ (Team s n) -> show s ++ " " ++ n) <$> teamSeq
        input <- prompt "[scorekeeper] "
-       ioLogic input teamVec $ updateTeams input teamVec
+       ioLogic input teamSeq $ updateTeams input teamSeq
 
 --------------------------------------------------------------------------------
 -- main function that's called first but can't be a loop because of its set type
 main :: IO ()
 main
   = do putStrLn "enter \"help\" to see a list of commands"
-       args <- vec <$> getArgs
-       loop $ V.map (Team 0) args
+       args <- fromList <$> getArgs
+       loop $ (Team 0) <$> args
