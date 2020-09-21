@@ -26,7 +26,7 @@ instance Ord Team where
 -- string printed by the help command
 helpString :: String
 helpString
-  = unlines $
+  = unlines
       ["change a team's score:",
        "  enter just a team name                - add 1 to that team",
        "  enter an integer and then a team name - add that integer to that team",
@@ -42,7 +42,7 @@ helpString
 --------------------------------------------------------------------------------
 -- in this case, I want Eithers instead of Maybes
 toEither :: a -> Maybe b -> Either a b
-toEither x y = fromMaybe (Left x) $ Right <$> y
+toEither x y = maybe (Left x) Right
 
 --------------------------------------------------------------------------------
 -- reliable prompt function
@@ -60,7 +60,7 @@ addPoints x (Team a b) = Team (a + x) b
 --------------------------------------------------------------------------------
 -- remove a team of the specified name from the sequence
 removeTeam :: String -> Seq Team -> Seq Team
-removeTeam s ts = filter (\ x -> name x /= s) ts
+removeTeam s = filter (\ x -> name x /= s)
 
 --------------------------------------------------------------------------------
 -- look up a team and modify it from an input string
@@ -85,13 +85,13 @@ updateTeams input teamSeq
   | L.null inputWords = Left "no input"
   | otherwise =
     case command of
-        "add" -> Right $ sort $ teamSeq >< ((Team 0) <$> fromList args)
+        "add" -> Right $ sort $ teamSeq >< (Team 0 <$> fromList args)
         "rm" -> toEither "no arguments" $
                   S.foldl1May (.) (map removeTeam args) <*> return teamSeq
-        otherwise -> case L.length inputWords of
+        _ -> case L.length inputWords of
                          1 -> addTeams ("1 " ++ command) teamSeq
-                         2 -> addTeams (input) teamSeq
-                         otherwise -> Left "too many arguments"
+                         2 -> addTeams input teamSeq
+                         _ -> Left "too many arguments"
   where inputWords = words input
         args = tail inputWords
         command = head inputWords
@@ -130,4 +130,4 @@ main :: IO ()
 main
   = do putStrLn "enter \"help\" to see a list of commands"
        args <- fromList <$> getArgs
-       loop $ (Team 0) <$> args
+       loop $ Team 0 <$> args
