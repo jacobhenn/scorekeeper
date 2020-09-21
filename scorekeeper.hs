@@ -12,6 +12,7 @@ import Prelude hiding (filter, length, replicate)
 import qualified Safe as S
 import System.Environment
 import System.IO
+import Data.Foldable (toList)
 
 --------------------------------------------------------------------------------
 -- team datatype for storing an integer and string
@@ -42,7 +43,7 @@ helpString
 --------------------------------------------------------------------------------
 -- in this case, I want Eithers instead of Maybes
 toEither :: a -> Maybe b -> Either a b
-toEither x y = maybe (Left x) Right
+toEither x = maybe (Left x) Right
 
 --------------------------------------------------------------------------------
 -- reliable prompt function
@@ -118,9 +119,7 @@ ioLogic input teamSeq newTeamSeq
 loop :: Seq Team -> IO ()
 loop teamSeq
   = do putStrLn $ L.replicate 24 '-'
-       putStrLn $
-         foldl1 (\ x y -> x ++ "\n" ++ y) $
-           (\ (Team s n) -> show s ++ " " ++ n) <$> teamSeq
+       mapM_ (\(Team x y) -> putStrLn $ show x ++ " " ++ y) $ toList teamSeq
        input <- prompt "[scorekeeper] "
        ioLogic input teamSeq $ updateTeams input teamSeq
 
