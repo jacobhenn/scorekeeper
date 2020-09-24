@@ -60,6 +60,6 @@ test
 ```
 (saving and loading functionality is temporarily unavailable due to rewrite)
 
-# Compile
+# Use
 
-`ghc --make scorekeeper`
+run/compile/install scorekeeper with [Cabal](www.haskell.org/cabal)

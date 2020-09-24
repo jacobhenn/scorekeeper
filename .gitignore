@@ -1,7 +1,2 @@
-*.hi
-*.o
-.hlint.yaml
-saves/*
-!saves/example
-scorekeeper
-.scorekeeper.hs
+dist
+dist-newstyle

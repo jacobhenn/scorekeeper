@@ -2,6 +2,8 @@
 -- Complete rewrite of my previous cli scorekeeping app using functor syntax
 -- Author: Jacob Henn
 --------------------------------------------------------------------------------
+module Main where
+
 {-# LANGUAGE MultiWayIf #-}
 import Control.Monad
 import Data.Either
@@ -107,6 +109,8 @@ ioLogic input teamSeq newTeamSeq
             loop teamSeq
        | otherwise ->
          if | isRight newTeamSeq -> loop $ fromRight undefined newTeamSeq
+            -- | input == "load" ->
+            --   do readFileMay $ saveDir ++ tail
             | otherwise ->
               do putStrLn $ "Error: " ++ fromLeft undefined newTeamSeq
                  loop teamSeq
