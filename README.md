@@ -62,4 +62,4 @@ test
 
 # Use
 
-run/compile/install scorekeeper with [Cabal](www.haskell.org/cabal)
+run/compile/install scorekeeper with [Cabal](https://www.haskell.org/cabal)
