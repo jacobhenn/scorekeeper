@@ -4,6 +4,7 @@ Scorekeeper is a slick and lightweight command line score tracking program, writ
 
 help table:
 
+```
 ╭───────────────────────────────────────────────────────────────────╮
 │ scorekeeper v3.3.0 (https://github.com/jacobhenn/scorekeeper)     │
 ├───────────────────┬───────────────────────────────────────────────┤
@@ -15,6 +16,7 @@ help table:
 │ :q, :quit, :exit  │ exit scorekeeper                              │
 │ :h, :help         │ show this message                             │
 ╰───────────────────┴───────────────────────────────────────────────╯
+```
 
 
 # Use
