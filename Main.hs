@@ -1,136 +1,152 @@
 --------------------------------------------------------------------------------
--- Complete rewrite of my previous cli scorekeeping app using functor syntax
+-- Slick cli scorekeeping app making use of the box drawing block
 -- Author: Jacob Henn
 --------------------------------------------------------------------------------
 module Main where
 
 {-# LANGUAGE MultiWayIf #-}
-import Control.Monad
-import Data.Either
-import qualified Data.List as L
-import Data.Maybe
-import Data.Sequence
-import Prelude hiding (filter, length, replicate)
-import qualified Safe as S
-import System.Environment
-import System.IO
-import Data.Foldable (toList)
+import System.Environment (getArgs)
+import System.Directory (doesFileExist)
+import Control.Monad (liftM2)
+import Data.Either (fromRight)
+import Text.Printf (printf)
+import Data.Maybe (maybe)
+import System.IO (hFlush, stdout)
+import Data.List (sort)
+import Safe (readMay, headMay, atMay, foldl1May, maximumDef)
 
 --------------------------------------------------------------------------------
--- team datatype for storing an integer and string
-data Team = Team{score :: Int, name :: String}
-              deriving (Eq, Show, Read)
+data Player = Player{score :: Int, name :: String} deriving Eq
 
-instance Ord Team where
-        (Team teamScore _) `compare` (Team teamScore' _)
-          = teamScore `compare` teamScore'
+-- order players by their scores
+instance Ord Player where
+    (Player s _) `compare` (Player s' _) = s `compare` s'
 
---------------------------------------------------------------------------------
--- string printed by the help command
-helpString :: String
-helpString
-  = unlines
-      ["change a team's score:",
-       "  enter just a team name                - add 1 to that team",
-       "  enter an integer and then a team name - add that integer to that team",
-       "edit the list of teams:",
-       "  enter \"add\" then one or more team names - add those teams to the list",
-       "  enter \"rm\" then one or more team names  - remove those teams from the list",
-       -- "manipulate save files:",
-       -- "  enter \"load\" then a save file name - discard the current scores and load teams from the file",
-       -- "  enter \"save\" then a name           - save the current scores to a file of that name, and overwrite if the file already exists",
-       -- "  enter \"ls\"                         - list all save files",
-       "show this message: enter \"help\""]
+instance Show Player where
+    show (Player s n) = show s ++ " " ++ n
 
 --------------------------------------------------------------------------------
--- in this case, I want Eithers instead of Maybes
+printHelp :: IO ()
+printHelp = putStrLn " ├───────────────────────────────────────────────────────────────────╮\n\
+                     \ │ scorekeeper v3.3.0 (https://github.com/jacobhenn/scorekeeper)     │\n\
+                     \ ├───────────────────┬───────────────────────────────────────────────┤\n\
+                     \ │ [player]          │ add 1 point to [player]                       │\n\
+                     \ │ [n] [player]      │ add [n] (integer) points to [player]          │\n\
+                     \ │ :add [player] ... │ add [player](s) to the list of players        │\n\
+                     \ │ :rm [player] ...  │ remove [player](s) from the list of players   │\n\
+                     \ │ :mul [n]          │ multiply each player's score by [n] (integer) │\n\
+                     \ │ :q, :quit, :exit  │ exit scorekeeper                              │\n\
+                     \ │ :h, :help         │ show this message                             │\n\
+                     \ ├───────────────────┴───────────────────────────────────────────────╯"
+
+--------------------------------------------------------------------------------
+printPlayers :: [Player] -> IO ()
+printPlayers players = do
+    putStrLn $ " ├" ++ replicate (maxNameLength + 2) '─'
+                   ++ "┬"
+                   ++ replicate (maxScoreLength + 2) '─'
+                   ++ "╮"
+
+    mapM_ (\(Player s n) -> printf " │ %-*s │ %*d │\n" maxNameLength n maxScoreLength s)
+        players
+
+    putStrLn $ " ├" ++ replicate (maxNameLength + 2) '─'
+                   ++ "┴"
+                   ++ replicate (maxScoreLength + 2) '─'
+                   ++ "╯"
+
+    where maxNameLength  = maximumDef 0 $ map (length . name)         players
+          maxScoreLength = maximumDef 0 $ map (length . show . score) players
+
+--------------------------------------------------------------------------------
+printError :: String -> IO ()
+printError string = putStrLn $ " │ Error: " ++ string
+
+--------------------------------------------------------------------------------
 toEither :: a -> Maybe b -> Either a b
 toEither x = maybe (Left x) Right
 
 --------------------------------------------------------------------------------
--- reliable prompt function
-prompt :: String -> IO String
-prompt x
-  = do putStr x
-       hFlush stdout
-       getLine
+ask :: String -> IO String
+ask prompt = do
+    putStr prompt
+    hFlush stdout
+    getLine
 
 --------------------------------------------------------------------------------
--- add points to a team
-addPoints :: Int -> Team -> Team
-addPoints x (Team a b) = Team (a + x) b
+addPlayer :: String -> [Player] -> [Player]
+addPlayer playerName = sort . (Player 0 playerName :)
 
 --------------------------------------------------------------------------------
--- remove a team of the specified name from the sequence
-removeTeam :: String -> Seq Team -> Seq Team
-removeTeam s = filter (\ x -> name x /= s)
+rmPlayer :: String -> [Player] -> [Player]
+rmPlayer playerName = sort . filter ((playerName/=) . name)
 
 --------------------------------------------------------------------------------
--- look up a team and modify it from an input string
-addTeams :: String -> Seq Team -> Either String (Seq Team)
-addTeams input teamSeq
-  = sort <$> (update <$> teamIndex <*> newTeam <*> return teamSeq)
-  where inputWords = words input
-        newPoints
-          = toEither (head inputWords ++ " is not a number") $
-              S.readMay $ head inputWords
-              :: Either String Int
-        teamName = last inputWords
-        teamIndex
-          = toEither (teamName ++ " is not a team") $
-              elemIndexL teamName $ name <$> teamSeq
-        newTeam = addPoints <$> newPoints <*> (index teamSeq <$> teamIndex)
+addPoints :: Int -> String -> [Player] -> [Player]
+addPoints points playerName players =
+    sort $ map (\(Player s n) ->
+        if | n == playerName -> Player (s + points) n
+           | otherwise       -> Player s n
+    ) players
 
 --------------------------------------------------------------------------------
--- change the sequence of teams based off of user input
-updateTeams :: String -> Seq Team -> Either String (Seq Team)
-updateTeams input teamSeq
-  | L.null inputWords = Left "no input"
-  | otherwise =
-    case command of
-        "add" -> Right $ sort $ teamSeq >< (Team 0 <$> fromList args)
-        "rm" -> toEither "no arguments" $
-                  S.foldl1May (.) (map removeTeam args) <*> return teamSeq
-        _ -> case L.length inputWords of
-                         1 -> addTeams ("1 " ++ command) teamSeq
-                         2 -> addTeams input teamSeq
-                         _ -> Left "too many arguments"
-  where inputWords = words input
-        args = tail inputWords
-        command = head inputWords
+mulPoints :: Int -> [Player] -> [Player]
+mulPoints c = map (\(Player s n) -> Player (c*s) n)
 
 --------------------------------------------------------------------------------
--- choose which IO action to do next based off of user input
-ioLogic :: String -> Seq Team -> Either String (Seq Team) -> IO ()
-ioLogic input teamSeq newTeamSeq
-  = if | elem input ["quit", "exit"] -> return ()
-       | input == "help" ->
-         do putStr helpString
-            loop teamSeq
-       | otherwise ->
-         if | isRight newTeamSeq -> loop $ fromRight undefined newTeamSeq
-            -- | input == "load" ->
-            --   do readFileMay $ saveDir ++ tail
-            | otherwise ->
-              do putStrLn $ "Error: " ++ fromLeft undefined newTeamSeq
-                 loop teamSeq
-  where inputWords = words input
-        command = head inputWords
-        args = tail inputWords
+parseAddPoints :: String -> Either String ([Player] -> [Player])
+parseAddPoints input = case (length inputWords) of
+    1 -> Right $ addPoints 1 player
+    _ -> liftM2 addPoints points $ return player
+    where inputWords = words input
+          points = toEither (head inputWords ++ " is not a number")
+                            (readMay $ head inputWords :: Maybe Int)
+          player = last inputWords
 
 --------------------------------------------------------------------------------
--- main loop which carries the team sequence with it through infinity
-loop :: Seq Team -> IO ()
-loop teamSeq
-  = do putStrLn $ L.replicate 24 '-'
-       mapM_ (\(Team x y) -> putStrLn $ show x ++ " " ++ y) $ toList teamSeq
-       input <- prompt "[scorekeeper] "
-       ioLogic input teamSeq $ updateTeams input teamSeq
+parseCommand :: String -> Either String ([Player] -> [Player])
+parseCommand input = (\x -> case x of
+        "add" -> toEither "no arguments" $ foldl1May (.) $ map addPlayer args
+        "rm"  -> toEither "no arguments" $ foldl1May (.) $ map rmPlayer  args
+        "mul" -> mulPoints <$>
+            ((toEither (fromRight undefined (arg 0) ++" is not a number") . readMay)
+            =<< arg 0)
+        _ -> Left $ head inputWords ++" is not a valid command"
+    ) =<< command
+    where inputWords = words input
+          command = toEither "empty command" $ headMay inputWords
+          args    = tail inputWords
+          arg i   = toEither "insufficient arguments" $ atMay args i
 
 --------------------------------------------------------------------------------
--- main function that's called first but can't be a loop because of its set type
+parse :: String -> Either String ([Player] -> [Player])
+parse input = if
+    | null inputWords   -> Left "no input"
+    | head input == ':' -> parseCommand $ tail input
+    | otherwise         -> parseAddPoints input
+    where inputWords = words input
+
+--------------------------------------------------------------------------------
+process :: [Player] -> String -> IO ()
+process players input
+    | elem input [":q", ":quit", ":exit"] = return ()
+    | elem input [":h", ":help"] = do
+        printHelp
+        loop players
+    | otherwise = either
+        (\y -> (\x -> loop players) =<< printError y)
+        (loop . ($players))
+        $ parse input
+
+--------------------------------------------------------------------------------
+loop :: [Player] -> IO ()
+loop players = do
+    printPlayers players
+    process players =<< ask " │"
+
+--------------------------------------------------------------------------------
 main :: IO ()
-main
-  = do putStrLn "enter \"help\" to see a list of commands"
-       args <- fromList <$> getArgs
-       loop $ Team 0 <$> args
+main = do
+    putStrLn " ╭──────────────────────────────────────"
+    putStrLn " │ enter ':help' for a list of commands"
+    loop =<< map (Player 0) <$> getArgs
