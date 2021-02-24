@@ -12,7 +12,7 @@ import Data.Either (fromRight)
 import Text.Printf (printf)
 import Data.Maybe (maybe)
 import System.IO (hFlush, stdout, writeFile, readFile)
-import Data.List (sort, isPrefixOf)
+import Data.List (sort, isPrefixOf, deleteFirstsBy)
 import Safe (readMay, headMay, atMay, foldl1May, maximumDef)
 
 --------------------------------------------------------------------------------
@@ -25,14 +25,14 @@ instance Ord Player where
 --------------------------------------------------------------------------------
 printHelp :: IO ()
 printHelp = putStrLn "╭┴──────────────────────────────────────────────────────────────────╮\n\
-                     \│ scorekeeper v3.4.0 (https://github.com/jacobhenn/scorekeeper)     │\n\
+                     \│ scorekeeper v4.0.0 (https://github.com/jacobhenn/scorekeeper)     │\n\
                      \├───────────────────┬───────────────────────────────────────────────┤\n\
                      \│ [player]          │ add 1 point to [player]                       │\n\
                      \│ [n] [player]      │ add [n] (integer) points to [player]          │\n\
                      \│ :add [player] ... │ add [player](s) to the list of players        │\n\
                      \│ :rm [player] ...  │ remove [player](s) from the list of players   │\n\
                      \│ :mul [n]          │ multiply each player's score by [n] (integer) │\n\
-                     \│ :q, :quit, :exit  │ exit scorekeeper                              │\n\
+                     \│ :q, :quit         │ exit scorekeeper                              │\n\
                      \│ :h, :help         │ show this message                             │\n\
                      \╰┬──────────────────┴───────────────────────────────────────────────╯"
 
@@ -57,109 +57,122 @@ printPlayers players = do
 
 --------------------------------------------------------------------------------
 printError :: String -> IO ()
-printError string = putStrLn $ " │ ↑ Error: " ++ string
+printError string = putStrLn $ " │ ↑ error: " ++ string
 
 --------------------------------------------------------------------------------
 toEither :: a -> Maybe b -> Either a b
 toEither x = maybe (Left x) Right
 
 --------------------------------------------------------------------------------
+readEither :: Read a => String -> String -> Either String a
+readEither m x = toEither ("couldn't parse '" ++ x ++ "': " ++ m) $ readMay x
+
+--------------------------------------------------------------------------------
 ask :: String -> IO String
-ask prompt = do
-    putStr prompt
-    hFlush stdout
-    getLine
+ask prompt = putStr prompt >> hFlush stdout >> getLine
 
 --------------------------------------------------------------------------------
--- append the current scores to a log file; errors gracefully
--- writeLogFile :: FilePath -> [Player] -> Either String (IO ())
--- writeLogFile path players = (\exists -> if
---     | exists -> writeFile path
---         =<< show . (players:) -- ::
---         =<< (toEither (path++" is not a valid log file") . readMay) -- :: Either String (IO [Player])
---         <$> readFile path -- :: IO String
---     | _ -> Left $ path ++ " does not exist"
---     ) <$> doesFileExist path
+addPlayers :: [String] -> [Player] -> Either String [Player]
+addPlayers args players = do
+    if null args then Left "no arguments" else Right ()
+
+    sequence $ map (\arg->
+        if elem arg $ map name players
+            then Left $ arg++" is already a player"
+            else Right ()
+        ) args
+
+    Right $ sort $ players ++ map (Player 0) args
 
 --------------------------------------------------------------------------------
-addPlayer :: String -> [Player] -> [Player]
-addPlayer playerName = sort . (Player 0 playerName :)
+rmPlayers :: [String] -> [Player] -> Either String [Player]
+rmPlayers args players = do
+    if null args then Left "no arguments" else Right ()
+
+    sequence $ map (\arg->
+        case length $ filter (isPrefixOf arg . name) players of
+            0 -> Left $ '\'':arg++"' doesn't match any players"
+            1 -> Right ()
+            _ -> Left $ '\'':arg++"' matches more than one player"
+        ) args
+
+    Right $ filter (\(Player _ n)-> any (\a-> not $ a `isPrefixOf` n) args) players
 
 --------------------------------------------------------------------------------
-rmPlayer :: String -> [Player] -> [Player]
-rmPlayer playerName = sort . filter ((playerName/=) . name)
+mulPlayers :: [String] -> [Player] -> Either String [Player]
+mulPlayers args players = case args of
+    [] -> Left "no arguments"
+    [arg] -> do
+        c <- readEither "not a number" arg
+        Right $ map (\(Player s n)-> Player (c*s) n) players
+    (_:a:_) -> Left $ "unexpected argument '"++a++"'"
 
 --------------------------------------------------------------------------------
--- execute an input of the form '[int] [team name]' on the team list
-addPoints :: Int -> String -> [Player] -> [Player]
-addPoints points playerName players =
-    sort $ map (\(Player s n) ->
-        if | playerName `isPrefixOf` n -> Player (s + points) n
-           | otherwise -> Player s n
-    ) players
+parseCommand :: String -> [Player] -> Either String [Player]
+parseCommand input players = do
+    command <- toEither "no command given" $ headMay inputWords
 
---------------------------------------------------------------------------------
-mulPoints :: Int -> [Player] -> [Player]
-mulPoints c = map (\(Player s n) -> Player (c*s) n)
+    case command of
+        "add" -> addPlayers args players
+        "rm"  -> rmPlayers args players
+        "mul" -> mulPlayers args players
+        _ -> Left $ '\'':command++"' is not a command"
 
---------------------------------------------------------------------------------
--- parse an input of the form '[int] [team name]' into a transformation
-parseAddPoints :: String -> Either String ([Player] -> [Player])
-parseAddPoints input = case (length inputWords) of
-    1 -> Right $ addPoints 1 player
-    _ -> liftM2 addPoints points $ return player
     where inputWords = words input
-          points = toEither (head inputWords ++ " is not a number")
-                            (readMay $ head inputWords :: Maybe Int)
-          player = last inputWords
+          args       = tail inputWords
 
 --------------------------------------------------------------------------------
--- parse a ':' command into a team list transformation; errors gracefully
-parseCommand :: String -> Either String ([Player] -> [Player])
-parseCommand input = (\x -> case x of
-        "add" -> toEither "no arguments" $ foldl1May (.) $ map addPlayer args
-        "rm"  -> toEither "no arguments" $ foldl1May (.) $ map rmPlayer  args
-        "mul" -> mulPoints <$>
-            ((toEither (fromRight undefined (arg 0) ++" is not a number") . readMay)
-            =<< arg 0)
-        _ -> Left $ head inputWords ++" is not a valid command"
-    ) =<< command
+addPoints :: Int -> String -> [Player] -> Either String [Player]
+addPoints pts search players = case is of
+    [] -> Left $ '\'' : search ++ "' doesn't match any players"
+    [(i,Player s n)] -> Right $ take i players
+                             ++ [Player (s+pts) n]
+                             ++ drop (i+1) players
+    _ -> Left $ '\'' : search ++ "' matches more than one player"
+    where is = filter (isPrefixOf search . name . snd) $ zip [0..] players
+
+--------------------------------------------------------------------------------
+parseAddPoints :: String -> [Player] -> Either String [Player]
+parseAddPoints input players = case (length inputWords) of
+    1 -> addPoints 1 search players
+    _ -> case points of
+        Right p -> addPoints p search players
+        Left e  -> Left e
     where inputWords = words input
-          command = toEither "empty command" $ headMay inputWords
-          args    = tail inputWords
-          arg i   = toEither "insufficient arguments" $ atMay args i
+          points = readEither "not a number" $ head inputWords
+          search = last inputWords
 
 --------------------------------------------------------------------------------
--- turns valid input into a transformation of the team list; errors gracefully
-parse :: String -> Either String ([Player] -> [Player])
-parse input = if
-    | null inputWords   -> Left "no input"
-    | head input == ':' -> parseCommand $ tail input
-    | otherwise         -> parseAddPoints input
+parse :: String -> [Player] -> Either String [Player]
+parse input players
+    | null inputWords   = Left "no input"
+    | head input == ':' = parseCommand (tail input) players
+    | otherwise         = parseAddPoints input players
     where inputWords = words input
 
 --------------------------------------------------------------------------------
--- takes the team list as well as user input and decides how to process it
+-- takes the player list as well as user input and decides how to process it
 process :: [Player] -> String -> IO ()
 process players input
-    | elem input [":q", ":quit", ":exit"] = return ()
-    | elem input [":h", ":help"] = do
+    | isPrefixOf input ":quit" = return ()
+    | isPrefixOf input ":help" = do
         printHelp
         loop players
-    | otherwise = either
-        (\y -> (\x -> loop players) =<< printError y)
-        (loop . ($players))
-        $ parse input
+    | otherwise = case (parse input players) of
+        Right newPlayers -> loop newPlayers
+        Left msg -> do
+            printError msg
+            loop players
 
 --------------------------------------------------------------------------------
--- main loop; carries the team list with it through infinity
+-- main loop; carries the player list with it through infinity
 loop :: [Player] -> IO ()
 loop players = do
     printPlayers players
     process players =<< ask " │ "
 
 --------------------------------------------------------------------------------
--- initialize the teams from command-line arguments
+-- initialize the players from command-line arguments
 main :: IO ()
 main = do
     putStrLn " ╭─────────────────────────────────────"
