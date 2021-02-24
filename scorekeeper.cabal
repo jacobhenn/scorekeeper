@@ -63,7 +63,9 @@ executable scorekeeper
   build-depends:       base ^>=4.14.1.0,
                        containers,
                        safe,
-                       directory
+                       directory,
+                       haskeline,
+                       mtl
 
   -- Directories containing source files.
   -- hs-source-dirs:

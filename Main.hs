@@ -5,15 +5,14 @@
 module Main where
 
 {-# LANGUAGE MultiWayIf #-}
+import System.Console.Haskeline
+import Control.Monad.Trans (lift)
 import System.Environment (getArgs)
-import System.Directory (doesFileExist)
-import Control.Monad (liftM2)
-import Data.Either (fromRight)
 import Text.Printf (printf)
 import Data.Maybe (maybe)
-import System.IO (hFlush, stdout, writeFile, readFile)
-import Data.List (sort, isPrefixOf, deleteFirstsBy)
-import Safe (readMay, headMay, atMay, foldl1May, maximumDef)
+import System.IO (hFlush, stdout)
+import Data.List (sort, isPrefixOf)
+import Safe (readMay, headMay, maximumDef)
 
 --------------------------------------------------------------------------------
 data Player = Player{score :: Int, name :: String} deriving (Eq, Show, Read)
@@ -23,18 +22,19 @@ instance Ord Player where
     (Player s _) `compare` (Player s' _) = s `compare` s'
 
 --------------------------------------------------------------------------------
-printHelp :: IO ()
-printHelp = putStrLn "╭┴──────────────────────────────────────────────────────────────────╮\n\
-                     \│ scorekeeper v4.0.0 (https://github.com/jacobhenn/scorekeeper)     │\n\
-                     \├───────────────────┬───────────────────────────────────────────────┤\n\
-                     \│ [player]          │ add 1 point to [player]                       │\n\
-                     \│ [n] [player]      │ add [n] (integer) points to [player]          │\n\
-                     \│ :add [player] ... │ add [player](s) to the list of players        │\n\
-                     \│ :rm [player] ...  │ remove [player](s) from the list of players   │\n\
-                     \│ :mul [n]          │ multiply each player's score by [n] (integer) │\n\
-                     \│ :q, :quit         │ exit scorekeeper                              │\n\
-                     \│ :h, :help         │ show this message                             │\n\
-                     \╰┬──────────────────┴───────────────────────────────────────────────╯"
+printHelp :: InputT IO ()
+printHelp = outputStrLn
+    "╭┴──────────────────────────────────────────────────────────────────╮\n\
+    \│ scorekeeper v5.0.0 (https://github.com/jacobhenn/scorekeeper)     │\n\
+    \├───────────────────┬───────────────────────────────────────────────┤\n\
+    \│ [player]          │ add 1 point to [player]                       │\n\
+    \│ [n] [player]      │ add [n] (integer) points to [player]          │\n\
+    \│ :add [player] ... │ add [player](s) to the list of players        │\n\
+    \│ :rm [player] ...  │ remove [player](s) from the list of players   │\n\
+    \│ :mul [n]          │ multiply each player's score by [n] (integer) │\n\
+    \│ :q, :quit         │ exit scorekeeper                              │\n\
+    \│ :h, :help         │ show this message                             │\n\
+    \╰┬──────────────────┴───────────────────────────────────────────────╯"
 
 --------------------------------------------------------------------------------
 printPlayers :: [Player] -> IO ()
@@ -56,8 +56,8 @@ printPlayers players = do
           maxScoreLength = maximumDef 0 $ map (length . show . score) players
 
 --------------------------------------------------------------------------------
-printError :: String -> IO ()
-printError string = putStrLn $ " │ ↑ error: " ++ string
+printError :: String -> InputT IO ()
+printError string = outputStrLn $ " │ ↑ error: " ++ string
 
 --------------------------------------------------------------------------------
 toEither :: a -> Maybe b -> Either a b
@@ -145,31 +145,29 @@ parseAddPoints input players = case (length inputWords) of
 --------------------------------------------------------------------------------
 parse :: String -> [Player] -> Either String [Player]
 parse input players
-    | null inputWords   = Left "no input"
-    | head input == ':' = parseCommand (tail input) players
-    | otherwise         = parseAddPoints input players
-    where inputWords = words input
+    | null (words input) = Left "no input"
+    | head input == ':'  = parseCommand (tail input) players
+    | otherwise          = parseAddPoints input players
 
 --------------------------------------------------------------------------------
 -- takes the player list as well as user input and decides how to process it
-process :: [Player] -> String -> IO ()
+process :: [Player] -> String -> InputT IO ()
 process players input
-    | isPrefixOf input ":quit" = return ()
-    | isPrefixOf input ":help" = do
-        printHelp
-        loop players
+    | elem input [":q", ":quit"] = return ()
+    | elem input [":h", ":help"] = printHelp >> loop players
     | otherwise = case (parse input players) of
         Right newPlayers -> loop newPlayers
-        Left msg -> do
-            printError msg
-            loop players
+        Left msg -> printError msg >> loop players
 
 --------------------------------------------------------------------------------
 -- main loop; carries the player list with it through infinity
-loop :: [Player] -> IO ()
+loop :: [Player] -> InputT IO ()
 loop players = do
-    printPlayers players
-    process players =<< ask " │ "
+    lift $ if null players then return () else printPlayers players
+    lineMay <- getInputLine " │ "
+    case lineMay of
+        Nothing -> printError "unexpected input"
+        Just line -> process players line
 
 --------------------------------------------------------------------------------
 -- initialize the players from command-line arguments
@@ -177,4 +175,4 @@ main :: IO ()
 main = do
     putStrLn " ╭─────────────────────────────────────"
     putStrLn " │ enter ':help' for a list of commands"
-    loop =<< map (Player 0) <$> getArgs
+    runInputT defaultSettings $ loop [] -- =<< map (Player 0) <$> getArgs
