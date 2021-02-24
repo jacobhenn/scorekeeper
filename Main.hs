@@ -24,19 +24,23 @@ instance Ord Player where
 --------------------------------------------------------------------------------
 printHelp :: InputT IO ()
 printHelp = outputStrLn
-    "╭┴──────────────────────────────────────────────────────────────────╮\n\
-    \│ scorekeeper v5.0.0 (https://github.com/jacobhenn/scorekeeper)     │\n\
-    \├───────────────────┬───────────────────────────────────────────────┤\n\
-    \│ [player]          │ add 1 point to [player]                       │\n\
-    \│ [n] [player]      │ add [n] (integer) points to [player]          │\n\
-    \│ :add [player] ... │ add [player](s) to the list of players        │\n\
-    \│ :rm [player] ...  │ remove [player](s) from the list of players   │\n\
-    \│ :mul [n]          │ multiply each player's score by [n] (integer) │\n\
-    \│ :q, :quit         │ exit scorekeeper                              │\n\
-    \│ :h, :help         │ show this message                             │\n\
-    \╰┬──────────────────┴───────────────────────────────────────────────╯"
+    "╭┴──────────────────────────────────────────────────────────────╮\n\
+    \│ scorekeeper v5.0.3 (https://github.com/jacobhenn/scorekeeper) │\n\
+    \├───────────────────────────────────────────────────────────────┤\n\
+    \│ prefix searches match players whose names start with the      │\n\
+    \│ given string: b = bob, ill != bill                            │\n\
+    \├─────────────────┬─────────────────────────────────────────────┤\n\
+    \│ [prefix]        │ add 1 point to the player matching [prefix] │\n\
+    \│ [n] [prefix]    │ add [n] points to [prefix]                  │\n\
+    \│ :add [player].. │ add [player](s) to the list of players      │\n\
+    \│ :rm [prefix]..  │ remove [prefix](s) from the list of players │\n\
+    \│ :mul [n]        │ multiply each player's score by [n]         │\n\
+    \│ :q, :quit       │ exit scorekeeper                            │\n\
+    \│ :h, :help       │ show this message                           │\n\
+    \╰┬────────────────┴─────────────────────────────────────────────╯"
 
 --------------------------------------------------------------------------------
+-- print a formatted unicode table of the players' names and scores
 printPlayers :: [Player] -> IO ()
 printPlayers players = do
     putStrLn $ "╭┴" ++ replicate maxNameLength '─'
@@ -64,14 +68,12 @@ toEither :: a -> Maybe b -> Either a b
 toEither x = maybe (Left x) Right
 
 --------------------------------------------------------------------------------
+-- like Safe.readMay, but takes an error string and returns an Either
 readEither :: Read a => String -> String -> Either String a
 readEither m x = toEither ("couldn't parse '" ++ x ++ "': " ++ m) $ readMay x
 
 --------------------------------------------------------------------------------
-ask :: String -> IO String
-ask prompt = putStr prompt >> hFlush stdout >> getLine
-
---------------------------------------------------------------------------------
+-- parse :add [name]..
 addPlayers :: [String] -> [Player] -> Either String [Player]
 addPlayers args players = do
     if null args then Left "no arguments" else Right ()
@@ -85,6 +87,7 @@ addPlayers args players = do
     Right $ sort $ players ++ map (Player 0) args
 
 --------------------------------------------------------------------------------
+-- parse :rm [prefix]..
 rmPlayers :: [String] -> [Player] -> Either String [Player]
 rmPlayers args players = do
     if null args then Left "no arguments" else Right ()
@@ -99,6 +102,7 @@ rmPlayers args players = do
     Right $ filter (\(Player _ n)-> any (\a-> not $ a `isPrefixOf` n) args) players
 
 --------------------------------------------------------------------------------
+-- parse :mul [n]
 mulPlayers :: [String] -> [Player] -> Either String [Player]
 mulPlayers args players = case args of
     [] -> Left "no arguments"
@@ -108,6 +112,7 @@ mulPlayers args players = case args of
     (_:a:_) -> Left $ "unexpected argument '"++a++"'"
 
 --------------------------------------------------------------------------------
+-- parse user input of the form :[command] [arg]..
 parseCommand :: String -> [Player] -> Either String [Player]
 parseCommand input players = do
     command <- toEither "no command given" $ headMay inputWords
@@ -122,27 +127,29 @@ parseCommand input players = do
           args       = tail inputWords
 
 --------------------------------------------------------------------------------
+-- find a player matching a prefix and add points to them
 addPoints :: Int -> String -> [Player] -> Either String [Player]
 addPoints pts search players = case is of
-    [] -> Left $ '\'' : search ++ "' doesn't match any players"
-    [(i,Player s n)] -> Right $ take i players
-                             ++ [Player (s+pts) n]
-                             ++ drop (i+1) players
-    _ -> Left $ '\'' : search ++ "' matches more than one player"
+    [] -> Left $ '\'':search++"' doesn't match any players"
+    [(i,Player s n)] -> Right $ sort $
+        take i players ++ [Player (s+pts) n] ++ drop (i+1) players
+    _ -> Left $ '\'':search++"' matches more than one player"
     where is = filter (isPrefixOf search . name . snd) $ zip [0..] players
 
 --------------------------------------------------------------------------------
+-- parse user input of the form [n] [prefix] or [prefix]
 parseAddPoints :: String -> [Player] -> Either String [Player]
-parseAddPoints input players = case (length inputWords) of
+parseAddPoints input players = case length inputWords of
     1 -> addPoints 1 search players
-    _ -> case points of
-        Right p -> addPoints p search players
-        Left e  -> Left e
+    2 -> do p <- points
+            addPoints p search players
+    _ -> Left $ "unexpected argument '"++inputWords!!2++"'"
     where inputWords = words input
           points = readEither "not a number" $ head inputWords
           search = last inputWords
 
 --------------------------------------------------------------------------------
+-- construct a player list transformation from user input
 parse :: String -> [Player] -> Either String [Player]
 parse input players
     | null (words input) = Left "no input"
@@ -153,11 +160,12 @@ parse input players
 -- takes the player list as well as user input and decides how to process it
 process :: [Player] -> String -> InputT IO ()
 process players input
-    | elem input [":q", ":quit"] = return ()
-    | elem input [":h", ":help"] = printHelp >> loop players
-    | otherwise = case (parse input players) of
+    | elem cmd [":q", ":quit"] = return ()
+    | elem cmd [":h", ":help"] = printHelp >> loop players
+    | otherwise = case parse input players of
         Right newPlayers -> loop newPlayers
         Left msg -> printError msg >> loop players
+    where cmd = head $ words input
 
 --------------------------------------------------------------------------------
 -- main loop; carries the player list with it through infinity
@@ -166,7 +174,7 @@ loop players = do
     lift $ if null players then return () else printPlayers players
     lineMay <- getInputLine " │ "
     case lineMay of
-        Nothing -> printError "unexpected input"
+        Nothing -> outputStrLn "error: input was given in an unexpected way"
         Just line -> process players line
 
 --------------------------------------------------------------------------------
@@ -175,4 +183,5 @@ main :: IO ()
 main = do
     putStrLn " ╭─────────────────────────────────────"
     putStrLn " │ enter ':help' for a list of commands"
-    runInputT defaultSettings $ loop [] -- =<< map (Player 0) <$> getArgs
+    args <- getArgs
+    runInputT defaultSettings $ loop $ map (Player 0) args
