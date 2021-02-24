@@ -23,4 +23,14 @@ help table:
 
 # Use
 
-run/compile/install scorekeeper with [Cabal](https://www.haskell.org/cabal) (remove the `-dynamic` flag in `scorekeeper.cabal` if you usually compile static executables)
+run/build/install scorekeeper with [Cabal](https://www.haskell.org/cabal) (remove the `-dynamic` flag in `scorekeeper.cabal` if you usually compile static executables)
+
+# Known Issues
+
+The score table will not align correctly if player names contain unicode chars wider than a cell:
+```
+╭┴──┬───╮
+│ ❌ │ 0 │
+╰┬──┴───╯
+```
+As far as I can tell, this is a limitation of the Text.Printf library and not scorekeeper itself.
